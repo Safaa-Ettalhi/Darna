@@ -1,0 +1,30 @@
+# Configuration du serveur
+NODE_ENV=development
+PORT=5000
+
+# Configuration de la base de données
+MONGODB_URI=mongodb://localhost:27017/darna
+
+# Configuration JWT
+JWT_SECRET=your jwt 
+JWT_EXPIRES_IN=7d
+REFRESH_TOKEN_EXPIRES_IN=30d
+
+SESSION_SECRET=your session secrect
+
+# Configuration email
+SMTP_HOST=sandbox.smtp.mailtrap.io
+SMTP_PORT=587
+SMTP_USER=rempli ça
+SMTP_PASS=et ça
+SMTP_FROM=noreply@darna.com
+
+# Configuration client
+CLIENT_URL=http://localhost:5000
+ 
+
+GOOGLE_CLIENT_ID=remplis ça
+GOOGLE_CLIENT_SECRET=et ça
+
+STRIPE_SECRET_KEY=remplie ça
+STRIPE_PUBLISHABLE_KEY=remplie ça
