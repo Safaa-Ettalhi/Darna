@@ -37,7 +37,7 @@ const propertySchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ['draft', 'published', 'pending_moderation', 'rejected', 'archived'],
-      default: 'pending_moderation',
+      default: 'published',
     },
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     media: [

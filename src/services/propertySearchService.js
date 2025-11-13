@@ -63,6 +63,12 @@ const searchProperties = async (filters = {}, currentUser = null) => {
     minPriority,
   } = filters;
 
+  const includeOwnFlag =
+    includeOwn === true ||
+    includeOwn === 'true' ||
+    includeOwn === 1 ||
+    includeOwn === '1';
+
   const conditions = [];
   const desiredStatus = status || 'published';
 
@@ -139,23 +145,18 @@ const searchProperties = async (filters = {}, currentUser = null) => {
     }
   }
 
-  if (includeOwn && currentUser?.userId) {
+  if (includeOwnFlag && currentUser?.userId) {
+    const ownerCondition = { ownerId: currentUser.userId };
+
     if (desiredStatus && desiredStatus !== 'all') {
-      conditions.push({
-        $or: [
-          { status: desiredStatus },
-          { ownerId: currentUser.userId },
-        ],
-      });
+      conditions.push({ ...ownerCondition, status: desiredStatus });
     } else {
-      conditions.push({
-        $or: [
-          { ownerId: currentUser.userId },
-        ],
-      });
+      conditions.push(ownerCondition);
     }
-  } else if (desiredStatus && desiredStatus !== 'all') {
-    conditions.push({ status: desiredStatus });
+  } else {
+    const statusFilter =
+      desiredStatus && desiredStatus !== 'all' ? desiredStatus : 'published';
+    conditions.push({ status: statusFilter });
   }
 
   const query = conditions.length ? { $and: conditions } : {};

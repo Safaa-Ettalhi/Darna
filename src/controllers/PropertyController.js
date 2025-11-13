@@ -113,6 +113,38 @@ class PropertyController{
             res.status(500).json({error :'internal server error'});
         }
     };
+    getProperty = async (req, res) => {
+        try {
+            const propertyId = req.params.id;
+            const property = await Property.findById(propertyId)
+                .populate({
+                    path: 'ownerId',
+                    select: 'firstName lastName accountType role subscription companyInfo',
+                    populate: { path: 'subscription.plan', select: 'name' },
+                });
+
+            if (!property) {
+                return res.status(404).json({ success: false, message: 'Property not found' });
+            }
+
+            const userId = req.user?.userId;
+            const userRole = req.user?.role;
+            const isOwner = userId && property.ownerId && property.ownerId._id?.toString() === userId;
+            const isAdmin = userRole === 'admin';
+
+            if (property.status !== 'published' && !isOwner && !isAdmin) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Cette annonce est en cours de traitement. Elle reste visible uniquement pour son propriétaire.',
+                });
+            }
+
+            res.json({ success: true, property });
+        } catch (error) {
+            console.error('Error fetching property', error);
+            res.status(500).json({ success: false, message: 'internal server error' });
+        }
+    };
     uploadMedia = async (req, res) => {
         try {
             if (!req.files?.length) {

@@ -12,6 +12,7 @@ const upload = multer({
 });
 
 router.get('/search', optionalAuth, PropertyController.searchPropreties);
+router.get('/:id', optionalAuth, PropertyController.getProperty);
 router.post('/', authenticateToken, PropertyController.createproperty);
 router.put('/:id', authenticateToken, verifyOwnership, PropertyController.updateProperty);
 router.delete('/:id', authenticateToken, verifyOwnership, PropertyController.deleteProperty);
