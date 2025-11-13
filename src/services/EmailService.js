@@ -44,7 +44,8 @@ class EmailService {
                 return;
             }
 
-            const verificationUrl = `${process.env.API_URL || 'http://localhost:5000'}/api/auth/verify-email?token=${token}`;
+            const baseUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+            const verificationUrl = `${baseUrl}/verify-email?token=${token}`;
             
             const mailOptions = {
                 from: process.env.SMTP_FROM || 'noreply@darna.com',
@@ -89,7 +90,8 @@ class EmailService {
                 return;
             }
 
-            const resetUrl = `${process.env.API_URL || 'http://localhost:5000'}/api/auth/reset-password?token=${token}`;
+            const baseUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+            const resetUrl = `${baseUrl}/reset-password?token=${token}`;
             
             const mailOptions = {
                 from: process.env.SMTP_FROM || 'noreply@darna.com',
@@ -118,10 +120,10 @@ class EmailService {
             };
 
             await this.transporter.sendMail(mailOptions);
-            console.log(`✅ Password reset email sent to ${email}`);
+            console.log(`Password reset email sent to ${email}`);
             
         } catch (error) {
-            console.error(`❌ Error sending password reset email to ${email}:`, error);
+            console.error(`Error sending password reset email to ${email}:`, error);
             throw new Error('Erreur lors de l\'envoi de l\'email de réinitialisation');
         }
     }
