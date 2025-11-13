@@ -181,6 +181,7 @@ class AuthService {
             }
 
             user.emailVerified = true;
+            user.isActive = true;
             user.emailVerificationToken = undefined;
             user.emailVerificationExpires = undefined;
             await user.save();
