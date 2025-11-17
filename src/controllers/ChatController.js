@@ -1,4 +1,5 @@
 import ChatService from '../services/ChatService.js';
+import NotificationService from '../services/NotificationService.js';
 
 class ChatController {
     getThreads = async (req, res) => {
@@ -51,10 +52,35 @@ class ChatController {
             if (io) {
                 io.to(thread.roomId).emit('new_message', {
                     id: msg._id,
+                    userId: msg.userId._id,
                     user: `${msg.userId.firstName} ${msg.userId.lastName}`.trim(),
                     message: msg.message,
                     timestamp: msg.createdAt,
                 });
+            }
+
+            if (io) {
+                io.to(thread.roomId).emit('new_message', {
+                    id: msg._id,
+                    userId: msg.userId._id,
+                    user: `${msg.userId.firstName} ${msg.userId.lastName}`.trim(),
+                    message: msg.message,
+                    timestamp: msg.createdAt,
+                });
+
+                const notificationService = new NotificationService(io);
+                const recipients = thread.participants.filter(
+                    (participant) => participant._id.toString() !== req.user.userId
+                );
+                for (const recipient of recipients) {
+                    await notificationService.sendNotification({
+                        userId: recipient._id,
+                        title: `Nouveau message sur "${thread.property?.title || "conversation"}"`,
+                        message: `${msg.userId.firstName} ${msg.userId.lastName} vous a envoyé un message.`,
+                        type: 'message',
+                        email: recipient.email,
+                    });
+                }
             }
 
             res.status(201).json({ success: true, message: msg });

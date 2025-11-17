@@ -1,11 +1,14 @@
 import ChatService from "../services/ChatService.js";
 import { socketCheckToken } from "../middlewares/socketMiddleware.js";
+import NotificationService from "../services/NotificationService.js";
 
 export class Chat {
   #io;
+  #notificationService;
 
   constructor(io) {
     this.#io = io;
+    this.#notificationService = new NotificationService(io);
   }
 
   init() {
@@ -46,10 +49,29 @@ export class Chat {
 
           this.#io.to(socket.roomId).emit("new_message", {
             id: newMsg._id,
+            userId: newMsg.userId._id,
             user: `${newMsg.userId.firstName} ${newMsg.userId.lastName}`.trim(),
             message: newMsg.message,
             timestamp: newMsg.createdAt,
           });
+
+          if (this.#notificationService) {
+            const thread = await ChatService.getThreadByRoom(socket.roomId);
+            if (thread) {
+              const recipients = thread.participants.filter(
+                (participant) => participant._id.toString() !== socket.user.userId
+              );
+              for (const recipient of recipients) {
+                await this.#notificationService.sendNotification({
+                  userId: recipient._id,
+                  title: `Nouveau message sur "${thread.property?.title || "conversation"}"`,
+                  message: `${newMsg.userId.firstName} ${newMsg.userId.lastName} vous a envoyé un message.`,
+                  type: "message",
+                  email: recipient.email,
+                });
+              }
+            }
+          }
         } catch (error) {
           console.error('send_message error', error.message);
           socket.emit("error", { message: error.message });
@@ -69,6 +91,7 @@ export class Chat {
 
           this.#io.to(socket.roomId).emit("new_image", {
             id: newMsg._id,
+            userId: newMsg.userId._id,
             user: `${newMsg.userId.firstName} ${newMsg.userId.lastName}`.trim(),
             image: imageUrl,
             timestamp: newMsg.createdAt,

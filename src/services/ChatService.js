@@ -105,6 +105,10 @@ class ChatService {
       .limit(limit)
       .lean();
   }
+
+  async getThreadByRoom(roomId) {
+    return ChatThread.findOne({ roomId }).populate("participants", "firstName lastName email");
+  }
 }
 
 export default new ChatService();
