@@ -56,18 +56,43 @@ class FinancingController {
 
     createTirelireGroup = async (req, res) => {
         try {
+            const darnaToken = req.headers.authorization?.split(' ')[1];
+            
+            if (!darnaToken) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Token d\'authentification requis'
+                });
+            }
+
+            console.log(' Création groupe Tirelire - Données reçues:', {
+                body: req.body,
+                userId: req.user.userId,
+            });
+
             const payload = {
                 ...req.body,
                 userId: req.user.userId,
+                token: darnaToken, // Passer le token JWT de Darna à Tirelire
             };
 
             const result = await this.service.createTirelireGroup(payload);
             res.status(201).json({ success: true, group: result });
         } catch (error) {
+            console.error(' Erreur dans createTirelireGroup:', {
+                message: error.message,
+                stack: error.stack,
+                response: error.response?.data,
+                status: error.response?.status,
+            });
+
             const status = error.response?.status || 400;
+            const errorMessage = error.message || 'Erreur inconnue lors de la création du groupe';
+            
             res.status(status).json({
                 success: false,
-                message: error.response?.data?.message || error.message,
+                message: errorMessage,
+                details: error.response?.data || undefined, 
             });
         }
     };
