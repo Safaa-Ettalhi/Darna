@@ -11,6 +11,12 @@ const messageSchema = new mongoose.Schema({
   mediaType: { type: String, enum: [...ALLOWED_MEDIA_TYPES, null], default: null },
   mediaName: { type: String, default: null },
   mediaSize: { type: Number, default: null },
+  systemType: {
+    type: String,
+    enum: ["call_started", "call_missed", "call_declined", "call_accepted", "call_ended", null],
+    default: null,
+  },
+  callDuration: { type: Number, default: null },
   read: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });

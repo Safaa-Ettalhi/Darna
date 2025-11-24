@@ -88,6 +88,24 @@ class ChatService {
     return msg.populate("userId", "firstName lastName email");
   }
 
+  async saveSystemMessage({ roomId, userId, systemType, callDuration = null }) {
+    if (!systemType) {
+      throw new Error("Type de message système requis");
+    }
+    const thread = await this.assertThreadAccessByRoom(roomId, userId);
+    const msg = await Message.create({
+      roomId,
+      userId,
+      systemType,
+      callDuration,
+      message: null,
+      read: false,
+    });
+    thread.lastMessageAt = new Date();
+    await thread.save();
+    return msg.populate("userId", "firstName lastName email");
+  }
+
   async saveImage(imageBuffer, fileName, mimeType) {
     const meta = mimeType ? { "Content-Type": mimeType } : {};
     return MinioService.upload(imageBuffer, fileName, meta);
