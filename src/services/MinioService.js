@@ -70,7 +70,7 @@ const getPublicUrl = (fileName) => {
 };
 
 class MinioService {
-  async upload(fileBuffer, fileName) {
+  async upload(fileBuffer, fileName, metaData = {}) {
     try {
       const client = buildClient();
       const bucket = process.env.MINIO_BUCKET;
@@ -82,7 +82,7 @@ class MinioService {
 
       await ensureBucket(client, bucket);
 
-      await client.putObject(bucket, fileName, fileBuffer);
+      await client.putObject(bucket, fileName, fileBuffer, metaData);
       return getPublicUrl(fileName);
     } catch (err) {
       console.error("MinIO upload failed:", err.message);

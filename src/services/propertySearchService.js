@@ -1,6 +1,7 @@
 import Property from "../models/Property.js";
 
 const DEFAULT_LIMIT = 10;
+const ACTIVE_STATUSES = ['published', 'pending_moderation'];
 
 const normalizeArrayFilter = (value) => {
   if (!value) {
@@ -71,6 +72,7 @@ const searchProperties = async (filters = {}, currentUser = null) => {
 
   const conditions = [];
   const desiredStatus = status || 'published';
+  const isActiveStatus = desiredStatus === 'active';
 
   const keywordConditions = [];
   if (keyword) {
@@ -145,18 +147,31 @@ const searchProperties = async (filters = {}, currentUser = null) => {
     }
   }
 
+  const buildStatusCondition = () => {
+    if (!desiredStatus || desiredStatus === 'all') {
+      return null;
+    }
+    if (isActiveStatus) {
+      return { status: { $in: ACTIVE_STATUSES } };
+    }
+    return { status: desiredStatus };
+  };
+
   if (includeOwnFlag && currentUser?.userId) {
     const ownerCondition = { ownerId: currentUser.userId };
-
-    if (desiredStatus && desiredStatus !== 'all') {
-      conditions.push({ ...ownerCondition, status: desiredStatus });
+    const statusCondition = buildStatusCondition();
+    if (statusCondition) {
+      conditions.push({ ...ownerCondition, ...statusCondition });
     } else {
       conditions.push(ownerCondition);
     }
   } else {
-    const statusFilter =
-      desiredStatus && desiredStatus !== 'all' ? desiredStatus : 'published';
-    conditions.push({ status: statusFilter });
+    const statusCondition = buildStatusCondition();
+    if (statusCondition) {
+      conditions.push(statusCondition);
+    } else {
+      conditions.push({ status: 'published' });
+    }
   }
 
   const query = conditions.length ? { $and: conditions } : {};

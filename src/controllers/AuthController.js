@@ -226,22 +226,63 @@ class AuthController {
     // Ajouter un membre à une entreprise
     addMember = async (req, res) => {
         try {
-            const { companyId, memberUserId } = req.body;
+            const { companyId, memberUserId, memberEmail } = req.body;
             const company = await User.findById(companyId);
-            const member = await User.findById(memberUserId);
+            
             if (!company || company.accountType !== 'entreprise') {
                 return res.status(400).json({ success: false, message: "Société introuvable ou invalide" });
             }
-            if (!member) {
-                return res.status(400).json({ success: false, message: "Membre introuvable" });
+
+            // Chercher le membre par email ou ID
+            let member;
+            if (memberEmail) {
+                member = await User.findOne({ email: memberEmail.toLowerCase().trim() });
+                if (!member) {
+                    return res.status(404).json({ success: false, message: "Aucun utilisateur trouvé avec cet email" });
+                }
+            } else if (memberUserId) {
+                member = await User.findById(memberUserId);
+            } else {
+                return res.status(400).json({ success: false, message: "Email ou ID du membre requis" });
             }
+
+            if (!member) {
+                return res.status(404).json({ success: false, message: "Membre introuvable" });
+            }
+
+            // Vérifier que le membre n'est pas déjà dans l'équipe
+            if (company.members.some(id => id.toString() === member._id.toString())) {
+                return res.status(400).json({ success: false, message: "Ce membre fait déjà partie de votre équipe" });
+            }
+
+            // Vérifier que le membre n'est pas une entreprise
+            if (member.accountType === 'entreprise') {
+                return res.status(400).json({ success: false, message: "Impossible d'ajouter une entreprise comme membre" });
+            }
+
+            // Vérifier que le membre n'a pas déjà une entreprise parente
+            if (member.parentCompany && member.parentCompany.toString() !== company._id.toString()) {
+                return res.status(400).json({ success: false, message: "Cet utilisateur fait déjà partie d'une autre entreprise" });
+            }
+
             member.parentCompany = company._id;
             await member.save();
+            
             if (!company.members.includes(member._id)) {
                 company.members.push(member._id);
                 await company.save();
             }
-            return res.json({ success: true, message: 'Membre ajouté à la société', member });
+            
+            return res.json({ 
+                success: true, 
+                message: 'Membre ajouté à la société', 
+                member: {
+                    _id: member._id,
+                    firstName: member.firstName,
+                    lastName: member.lastName,
+                    email: member.email
+                }
+            });
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
         }

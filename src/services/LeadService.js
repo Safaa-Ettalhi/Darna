@@ -6,7 +6,19 @@ import { recalculatePropertyPriority } from './propertyPriorityService.js';
 
 class LeadService {
   constructor(io) {
+    this.io = io;
     this.notificationService = io ? new NotificationService(io) : null;
+  }
+
+  emitLeadEvent(event, lead, userIds = []) {
+    if (!this.io || !lead) return;
+    const payload = typeof lead.toObject === 'function' ? lead.toObject() : lead;
+    userIds.forEach((userId) => {
+      if (!userId) return;
+      const idValue = userId?._id ? userId._id : userId;
+      if (!idValue) return;
+      this.io.to(idValue.toString()).emit(event, payload);
+    });
   }
 
   async createLead({ propertyId, buyerId, message }) {
@@ -75,6 +87,7 @@ class LeadService {
       { path: 'owner', select: 'firstName lastName email' },
       { path: 'thread' },
     ]);
+    this.emitLeadEvent('lead_created', lead, [property.ownerId._id, buyerId]);
     return lead;
   }
 
@@ -107,6 +120,13 @@ class LeadService {
     lead.lastInteractionAt = new Date();
     await lead.save();
 
+    await lead.populate([
+      { path: 'property' },
+      { path: 'buyer', select: 'firstName lastName email' },
+      { path: 'owner', select: 'firstName lastName email' },
+      { path: 'thread' },
+    ]);
+    this.emitLeadEvent('lead_updated', lead, [lead.owner, lead.buyer]);
     return lead;
   }
 }

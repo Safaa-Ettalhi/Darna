@@ -39,6 +39,9 @@ class SubscriptionService {
         const plan = await Plan.findById(planId);
         if (!plan) throw new Error('Plan non trouvé');
 
+        const successUrl = `${process.env.CLIENT_URL}/profile?payment=success&plan=${planId}&session_id={CHECKOUT_SESSION_ID}`;
+        const cancelUrl = `${process.env.CLIENT_URL}/profile?payment=cancel`;
+
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             mode: 'payment',
@@ -53,8 +56,8 @@ class SubscriptionService {
                 },
             ],
             customer_email: (await User.findById(userId)).email,
-            success_url: process.env.CLIENT_URL + '/abo/success?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url: process.env.CLIENT_URL + '/abo/cancel',
+            success_url: successUrl,
+            cancel_url: cancelUrl,
             metadata: { userId: userId, planId: planId },
         });
         return session.url;

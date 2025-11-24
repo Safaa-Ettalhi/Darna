@@ -296,7 +296,8 @@ class AuthService {
 
     async getUserProfile(userId) {
         try {
-            const user = await User.findById(userId);
+            const user = await User.findById(userId)
+                .populate('members', 'firstName lastName email phone accountType isActive createdAt');
             
             if (!user) {
                 throw new Error('Utilisateur non trouvé');

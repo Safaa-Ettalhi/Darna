@@ -105,8 +105,8 @@ userSchema.methods.canPublishProperty = function() {
 // Limites d'abonnement 
 userSchema.methods.getSubscriptionLimits = function() {
     const limits = {
-        gratuit: { properties: 3, imagesPerProperty: 5 },
-        pro: { properties: 20, imagesPerProperty: 15 },
+        gratuit: { properties: 10, imagesPerProperty: 10 },
+        pro: { properties: 30, imagesPerProperty: 20 },
         premium: { properties: -1, imagesPerProperty: -1 }
     };
     return limits[this.subscription.plan] || limits.gratuit;

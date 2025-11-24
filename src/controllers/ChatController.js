@@ -1,6 +1,62 @@
 import ChatService from '../services/ChatService.js';
 import NotificationService from '../services/NotificationService.js';
 
+const serializeMessagePayload = (msg) => {
+    if (!msg) {
+        return null;
+    }
+    const fullName = `${msg.userId?.firstName || ""} ${msg.userId?.lastName || ""}`.trim();
+    const imageUrl = msg.image || (msg.mediaType === "image" ? msg.mediaUrl : null);
+    return {
+        id: msg._id,
+        userId: msg.userId?._id || msg.userId,
+        user: fullName || msg.userId?.email || "Utilisateur",
+        message: msg.message || null,
+        timestamp: msg.createdAt,
+        image: imageUrl,
+        mediaType: msg.mediaType || null,
+        mediaUrl: msg.mediaUrl || null,
+        mediaName: msg.mediaName || null,
+        mediaSize: msg.mediaSize || null,
+        read: msg.read || false,
+    systemType: msg.systemType || null,
+    callDuration: msg.callDuration || null,
+    };
+};
+
+const notifyParticipants = async ({ io, thread, msg, currentUserId }) => {
+    if (!io || !thread || !msg) return;
+    
+    // Filtrer les participants visibles (qui n'ont pas supprimé la conversation)
+    const visibleParticipants = thread.participants.filter(
+        (participant) => {
+            const participantId = participant._id?.toString() || participant.toString();
+            // Exclure l'expéditeur et ceux qui ont supprimé la conversation
+            if (participantId === currentUserId.toString()) return false;
+            if (thread.hiddenFor && thread.hiddenFor.some(
+                (hiddenId) => hiddenId.toString() === participantId
+            )) return false;
+            return true;
+        }
+    );
+
+    // Émettre le message seulement aux participants visibles
+    // On émet à la room, mais les utilisateurs qui ont supprimé ne verront pas le message
+    // car ils ne sont pas dans la room (ils ne peuvent pas rejoindre une conversation supprimée)
+    io.to(thread.roomId).emit('new_message', serializeMessagePayload(msg));
+
+    const notificationService = new NotificationService(io);
+    for (const recipient of visibleParticipants) {
+        await notificationService.sendNotification({
+            userId: recipient._id || recipient,
+            title: `Nouveau message sur "${thread.property?.title || "conversation"}"`,
+            message: `${msg.userId.firstName} ${msg.userId.lastName} vous a envoyé un message.`.trim(),
+            type: 'message',
+            email: recipient.email,
+        });
+    }
+};
+
 class ChatController {
     getThreads = async (req, res) => {
         try {
@@ -49,38 +105,47 @@ class ChatController {
             });
 
             const io = req.app.get('io');
-            if (io) {
-                io.to(thread.roomId).emit('new_message', {
-                    id: msg._id,
-                    userId: msg.userId._id,
-                    user: `${msg.userId.firstName} ${msg.userId.lastName}`.trim(),
-                    message: msg.message,
-                    timestamp: msg.createdAt,
-                });
+            await notifyParticipants({
+                io,
+                thread,
+                msg,
+                currentUserId: req.user.userId,
+            });
+
+            res.status(201).json({ success: true, message: msg });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
+        }
+    };
+
+    uploadAttachment = async (req, res) => {
+        try {
+            if (!req.file) {
+                return res.status(400).json({ success: false, message: "Fichier requis" });
             }
 
-            if (io) {
-                io.to(thread.roomId).emit('new_message', {
-                    id: msg._id,
-                    userId: msg.userId._id,
-                    user: `${msg.userId.firstName} ${msg.userId.lastName}`.trim(),
-                    message: msg.message,
-                    timestamp: msg.createdAt,
-                });
+            const thread = await ChatService.getThreadById(req.params.threadId, req.user.userId);
+            const msg = await ChatService.saveMediaMessage({
+                roomId: thread.roomId,
+                userId: req.user.userId,
+                buffer: req.file.buffer,
+                originalName: req.file.originalname,
+                mimeType: req.file.mimetype,
+                size: req.file.size,
+            });
 
-                const notificationService = new NotificationService(io);
-                const recipients = thread.participants.filter(
-                    (participant) => participant._id.toString() !== req.user.userId
-                );
-                for (const recipient of recipients) {
-                    await notificationService.sendNotification({
-                        userId: recipient._id,
-                        title: `Nouveau message sur "${thread.property?.title || "conversation"}"`,
-                        message: `${msg.userId.firstName} ${msg.userId.lastName} vous a envoyé un message.`,
-                        type: 'message',
-                        email: recipient.email,
-                    });
-                }
+            // Notification non-bloquante : si elle échoue, le message est quand même envoyé
+            const io = req.app.get('io');
+            try {
+                await notifyParticipants({
+                    io,
+                    thread,
+                    msg,
+                    currentUserId: req.user.userId,
+                });
+            } catch (notifError) {
+                // Log l'erreur mais ne bloque pas l'envoi du message
+                console.error('Erreur lors de l\'envoi de la notification:', notifError.message);
             }
 
             res.status(201).json({ success: true, message: msg });
@@ -91,8 +156,25 @@ class ChatController {
 
     markMessageRead = async (req, res) => {
         try {
-            await ChatService.markAsRead(req.params.messageId, req.user.userId);
+            const message = await ChatService.markAsRead(req.params.messageId, req.user.userId);
+            const io = req.app.get('io');
+            if (io && message?.roomId) {
+                io.to(message.roomId).emit('message_read', {
+                    messageId: message._id?.toString() || message.id,
+                    readerId: req.user.userId,
+                    readAt: new Date().toISOString(),
+                });
+            }
             res.json({ success: true });
+        } catch (error) {
+            res.status(400).json({ success: false, message: error.message });
+        }
+    };
+
+    deleteThread = async (req, res) => {
+        try {
+            await ChatService.deleteThread(req.params.threadId, req.user.userId);
+            res.json({ success: true, message: 'Conversation supprimée avec succès' });
         } catch (error) {
             res.status(400).json({ success: false, message: error.message });
         }

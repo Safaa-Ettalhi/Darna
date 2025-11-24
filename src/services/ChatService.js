@@ -1,6 +1,8 @@
 import Message from "../models/Message.js";
 import ChatThread from "../models/ChatThread.js";
 import MinioService from "./MinioService.js";
+import path from "path";
+import { randomUUID } from "crypto";
 
 class ChatService {
   async assertThreadAccessByRoom(roomId, userId) {
@@ -20,9 +22,12 @@ class ChatService {
   }
 
   async getUserThreads(userId) {
-    const threads = await ChatThread.find({ participants: userId })
+    const threads = await ChatThread.find({ 
+      participants: userId,
+      hiddenFor: { $ne: userId } // Exclure les threads supprimés par cet utilisateur
+    })
       .populate('property', 'title price address')
-      .populate('participants', 'firstName lastName email')
+      .populate('participants', 'firstName lastName email phone')
       .sort({ lastMessageAt: -1, updatedAt: -1 })
       .lean();
 
@@ -56,20 +61,26 @@ class ChatService {
     const thread = await this.assertThreadAccessById(threadId, userId);
     return thread.populate([
       { path: 'property', select: 'title price address' },
-      { path: 'participants', select: 'firstName lastName email' },
+      { path: 'participants', select: 'firstName lastName email phone' },
     ]);
   }
 
-  async saveMessage({ roomId, userId, message, image }) {
+  async saveMessage({ roomId, userId, message, image, media }) {
     const thread = await this.assertThreadAccessByRoom(roomId, userId);
 
-    const msg = await Message.create({
+    const payload = {
       roomId,
       userId,
       message: message || null,
-      image: image || null,
+      image: image || (media?.type === "image" ? media.url : null),
+      mediaUrl: media?.url || null,
+      mediaType: media?.type || null,
+      mediaName: media?.name || null,
+      mediaSize: media?.size || null,
       read: false,
-    });
+    };
+
+    const msg = await Message.create(payload);
 
     thread.lastMessageAt = new Date();
     await thread.save();
@@ -77,8 +88,42 @@ class ChatService {
     return msg.populate("userId", "firstName lastName email");
   }
 
-  async saveImage(imageBuffer, fileName) {
-    return MinioService.upload(imageBuffer, fileName);
+  async saveImage(imageBuffer, fileName, mimeType) {
+    const meta = mimeType ? { "Content-Type": mimeType } : {};
+    return MinioService.upload(imageBuffer, fileName, meta);
+  }
+
+  detectMediaType(mimeType = "", fileName = "") {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("video/")) return "video";
+    if (mimeType.startsWith("audio/")) return "audio";
+    const ext = path.extname(fileName).toLowerCase();
+    if ([".png", ".jpg", ".jpeg", ".gif", ".webp"].includes(ext)) return "image";
+    if ([".mp4", ".mov", ".avi", ".mkv", ".webm"].includes(ext)) return "video";
+    if ([".mp3", ".wav", ".aac", ".ogg"].includes(ext)) return "audio";
+    throw new Error("Type de fichier non pris en charge pour le chat");
+  }
+
+  async saveMediaMessage({ roomId, userId, buffer, originalName, mimeType, size }) {
+    const mediaType = this.detectMediaType(mimeType || "", originalName || "");
+    const extension =
+      path.extname(originalName || "") ||
+      (mimeType ? `.${mimeType.split("/").pop()}` : "");
+    const safeExt = extension || "";
+    const fileName = `chat_media/${userId}_${Date.now()}_${randomUUID()}${safeExt}`;
+    const meta = mimeType ? { "Content-Type": mimeType } : {};
+    const url = await MinioService.upload(buffer, fileName, meta);
+
+    return this.saveMessage({
+      roomId,
+      userId,
+      media: {
+        url,
+        type: mediaType,
+        name: originalName || `media${safeExt}`,
+        size: size ?? buffer?.length ?? null,
+      },
+    });
   }
 
   async markAsRead(messageId, userId) {
@@ -88,7 +133,12 @@ class ChatService {
     }
 
     await this.assertThreadAccessByRoom(message.roomId, userId);
-    await Message.findByIdAndUpdate(messageId, { read: true });
+    const updated = await Message.findByIdAndUpdate(
+      messageId,
+      { read: true },
+      { new: true, lean: true }
+    );
+    return updated || message.toObject();
   }
 
   async getRoomMessages(roomId, userId, { limit = 50, before } = {}) {
@@ -107,7 +157,32 @@ class ChatService {
   }
 
   async getThreadByRoom(roomId) {
-    return ChatThread.findOne({ roomId }).populate("participants", "firstName lastName email");
+    return ChatThread.findOne({ roomId }).populate("participants", "firstName lastName email phone");
+  }
+
+  async deleteThread(threadId, userId) {
+    const thread = await this.assertThreadAccessById(threadId, userId);
+    
+    // Ajouter l'utilisateur à la liste hiddenFor au lieu de supprimer physiquement
+    // Cela permet de "masquer" la conversation pour cet utilisateur uniquement
+    if (!thread.hiddenFor || !thread.hiddenFor.some(id => id.toString() === userId.toString())) {
+      await ChatThread.findByIdAndUpdate(threadId, {
+        $addToSet: { hiddenFor: userId }
+      });
+    }
+    
+    return { success: true };
+  }
+
+  async restoreThread(threadId, userId) {
+    const thread = await this.assertThreadAccessById(threadId, userId);
+    
+    // Retirer l'utilisateur de la liste hiddenFor pour restaurer la conversation
+    await ChatThread.findByIdAndUpdate(threadId, {
+      $pull: { hiddenFor: userId }
+    });
+    
+    return { success: true };
   }
 }
 

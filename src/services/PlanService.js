@@ -22,9 +22,9 @@ class PlanService {
 
     async createDefaultPlans() {
         const plans = [
-            { name: 'gratuit', price: 0, duration: 'monthly', maxProperties: 1, priority: 1, features: ['basic'] },
-            { name: 'pro', price: 29, duration: 'monthly', maxProperties: 10, priority: 2, features: ['basic', 'priority'] },
-            { name: 'premium', price: 99, duration: 'monthly', maxProperties: 100, priority: 3, features: ['basic', 'priority', 'analytics'] }
+            { name: 'gratuit', price: 0, duration: 'monthly', maxProperties: 10, priority: 1, features: ['basic'] },
+            { name: 'pro', price: 29, duration: 'monthly', maxProperties: 30, priority: 2, features: ['basic', 'priority'] },
+            { name: 'premium', price: 99, duration: 'monthly', maxProperties: -1, priority: 3, features: ['basic', 'priority', 'analytics'] }
         ];
 
         for (const planData of plans) {

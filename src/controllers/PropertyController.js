@@ -19,12 +19,65 @@ import Property from "../models/Property.js";
 import searchProperties from "../services/propertySearchService.js";
 import { recalculatePropertyPriority } from "../services/propertyPriorityService.js";
 import PropertyMediaService from "../services/PropertyMediaService.js";
+import User from "../models/User.js";
+import Subscription from "../models/Subscription.js";
+import Plan from "../models/Plan.js";
 
 const propertyMediaService = new PropertyMediaService();
+const PLAN_PROPERTY_LIMITS = {
+    gratuit: 10,
+    pro: 30,
+    premium: Number.POSITIVE_INFINITY,
+};
+const ACTIVE_STATUSES_FOR_LIMIT = ['published', 'pending_moderation'];
+
+const getPlanPropertyLimit = (planName = 'gratuit') => {
+    const normalized = planName?.toLowerCase?.() ?? 'gratuit';
+    return PLAN_PROPERTY_LIMITS[normalized] ?? PLAN_PROPERTY_LIMITS.gratuit;
+};
+
+const ensurePlanAllowsNewProperty = async (userId) => {
+    const owner = await User.findById(userId).select('subscription.plan');
+    if (!owner) {
+        throw new Error('Utilisateur introuvable pour la création de l’annonce.');
+    }
+
+    const planName = owner.subscription?.plan || 'gratuit';
+    const limit = getPlanPropertyLimit(planName);
+
+    if (!Number.isFinite(limit)) {
+        return { allowed: true, planName, limit };
+    }
+
+    const activeCount = await Property.countDocuments({
+        ownerId: userId,
+        status: { $in: ACTIVE_STATUSES_FOR_LIMIT },
+    });
+
+    return {
+        allowed: activeCount < limit,
+        planName,
+        limit,
+        activeCount,
+    };
+};
 
 class PropertyController{
     createproperty = async(req, res)=>{
         try {
+            const planCheck = await ensurePlanAllowsNewProperty(req.user.userId);
+            if (!planCheck.allowed) {
+                return res.status(403).json({
+                    success: false,
+                    code: 'PLAN_LIMIT_REACHED',
+                    message: `Votre plan ${planCheck.planName} limite la publication à ${planCheck.limit} annonce(s) active(s).`,
+                    details: {
+                        limit: planCheck.limit,
+                        activeCount: planCheck.activeCount,
+                    },
+                });
+            }
+
             const payload = {
                 ...req.body,
                 ownerId: req.user.userId,
@@ -38,6 +91,12 @@ class PropertyController{
                 success: true,
                 property: hydratedProperty || newProperty,
             });
+            const io = req.app.get("io");
+            if (io) {
+                io.emit("property_created", {
+                    property: (hydratedProperty || newProperty),
+                });
+            }
         }catch(error){
             if(error.isJoi){
                 res.status(400).json({ error: error.details[0].message});
@@ -77,6 +136,12 @@ class PropertyController{
             }
             const recalculated = await recalculatePropertyPriority(updatedProperty._id);
             res.json({ success: true, property: recalculated || updatedProperty });
+            const io = req.app.get("io");
+            if (io) {
+                io.emit("property_updated", {
+                    property: recalculated || updatedProperty,
+                });
+            }
         } catch(error){
             if( error.isJoi){
                 res.status(400).json({error : error.details[0].message});
@@ -100,6 +165,10 @@ class PropertyController{
             }
 
             res.json({ success: true, message: 'property deleted succesfully'});
+            const io = req.app.get("io");
+            if (io) {
+                io.emit("property_deleted", { propertyId });
+            }
         }catch(error){
             console.error('error deleting the property', error);
             res.status(500).json({ error:'internal server error'});
@@ -180,6 +249,50 @@ class PropertyController{
         } catch (error) {
             console.error('Error removing media', error);
             res.status(400).json({ success: false, message: error.message });
+        }
+    };
+
+    getPremiumStats = async (req, res) => {
+        try {
+            const premiumPlan = await Plan.findOne({ name: 'premium' }).select('_id');
+            if (!premiumPlan) {
+                return res.json({ success: true, totalPremium: 0, myPremium: 0 });
+            }
+
+            const premiumUserIds = await Subscription.distinct('user', {
+                plan: premiumPlan._id,
+                status: 'active',
+            });
+
+            if (!premiumUserIds.length) {
+                return res.json({ success: true, totalPremium: 0, myPremium: 0 });
+            }
+
+            const totalPremium = await Property.countDocuments({
+                status: 'published',
+                ownerId: { $in: premiumUserIds },
+            });
+
+            let myPremium = 0;
+            if (req.user?.userId) {
+                const userId = req.user.userId.toString();
+                const isPremiumUser = premiumUserIds.some((id) => id.toString() === userId);
+                if (isPremiumUser) {
+                    myPremium = await Property.countDocuments({
+                        ownerId: req.user.userId,
+                        status: 'published',
+                    });
+                }
+            }
+
+            res.json({
+                success: true,
+                totalPremium,
+                myPremium,
+            });
+        } catch (error) {
+            console.error('Error computing premium stats', error);
+            res.status(500).json({ success: false, message: 'internal server error' });
         }
     };
 }
