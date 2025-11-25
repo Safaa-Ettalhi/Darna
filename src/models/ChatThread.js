@@ -8,6 +8,15 @@ const chatThreadSchema = new mongoose.Schema(
     lead: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
     lastMessageAt: { type: Date, default: Date.now },
     hiddenFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', default: [] }],
+    clearedFor: {
+      type: [
+        {
+          user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+          clearedAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,
