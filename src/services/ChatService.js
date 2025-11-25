@@ -83,6 +83,7 @@ class ChatService {
     const msg = await Message.create(payload);
 
     thread.lastMessageAt = new Date();
+    thread.hiddenFor = [];
     await thread.save();
 
     return msg.populate("userId", "firstName lastName email");
@@ -93,6 +94,21 @@ class ChatService {
       throw new Error("Type de message système requis");
     }
     const thread = await this.assertThreadAccessByRoom(roomId, userId);
+    const duplicateWindow = new Date(Date.now() - 2000);
+    const duplicateQuery = {
+      roomId,
+      systemType,
+      createdAt: { $gte: duplicateWindow },
+    };
+    if (systemType === "call_ended" && callDuration !== null) {
+      duplicateQuery.callDuration = callDuration;
+    }
+    const duplicate = await Message.findOne(duplicateQuery)
+      .sort({ createdAt: -1 })
+      .populate("userId", "firstName lastName email");
+    if (duplicate) {
+      return duplicate;
+    }
     const msg = await Message.create({
       roomId,
       userId,
@@ -102,6 +118,7 @@ class ChatService {
       read: false,
     });
     thread.lastMessageAt = new Date();
+    thread.hiddenFor = [];
     await thread.save();
     return msg.populate("userId", "firstName lastName email");
   }
@@ -180,26 +197,14 @@ class ChatService {
 
   async deleteThread(threadId, userId) {
     const thread = await this.assertThreadAccessById(threadId, userId);
-    
-    // Ajouter l'utilisateur à la liste hiddenFor au lieu de supprimer physiquement
-    // Cela permet de "masquer" la conversation pour cet utilisateur uniquement
-    if (!thread.hiddenFor || !thread.hiddenFor.some(id => id.toString() === userId.toString())) {
-      await ChatThread.findByIdAndUpdate(threadId, {
-        $addToSet: { hiddenFor: userId }
-      });
+    if (!thread) {
+      throw new Error("Conversation introuvable");
     }
-    
-    return { success: true };
-  }
-
-  async restoreThread(threadId, userId) {
-    const thread = await this.assertThreadAccessById(threadId, userId);
-    
-    // Retirer l'utilisateur de la liste hiddenFor pour restaurer la conversation
-    await ChatThread.findByIdAndUpdate(threadId, {
-      $pull: { hiddenFor: userId }
-    });
-    
+    const alreadyHidden = thread.hiddenFor?.some((id) => id.toString() === userId.toString());
+    if (!alreadyHidden) {
+      thread.hiddenFor = [...(thread.hiddenFor || []), userId];
+      await thread.save();
+    }
     return { success: true };
   }
 }
