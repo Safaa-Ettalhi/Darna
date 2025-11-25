@@ -131,6 +131,21 @@ export class Chat {
         }
       });
 
+      const broadcastCallEvent = async (roomId, eventName, payload) => {
+        socket.to(roomId).emit(eventName, payload);
+        try {
+          const thread = await ChatService.getThreadByRoom(roomId);
+          if (!thread) return;
+          thread.participants.forEach((participant) => {
+            const participantId = participant._id?.toString() || participant.toString();
+            if (participantId === socket.user.userId.toString()) return;
+            this.#io.to(participantId).except(roomId).emit(eventName, payload);
+          });
+        } catch (error) {
+          console.error(`${eventName} broadcast error`, error.message);
+        }
+      };
+
       socket.on("call_offer", async (data = {}) => {
         if (!data.offer) {
           console.error("call_offer: missing offer", data);
@@ -172,44 +187,44 @@ export class Chat {
 
         recipients.forEach((participant) => {
           const participantId = participant._id?.toString() || participant.toString();
-          this.#io.to(participantId).emit("call_offer", callPayload);
+          this.#io.to(participantId).except(targetRoomId).emit("call_offer", callPayload);
         });
       });
 
-      socket.on("call_answer", (data = {}) => {
+      socket.on("call_answer", async (data = {}) => {
         const targetRoomId = data.roomId || socket.roomId;
         if (!targetRoomId || !data.answer) {
           console.error("call_answer: missing roomId or answer", { socketRoomId: socket.roomId, data });
           return;
         }
-        socket.to(targetRoomId).emit("call_answer", { answer: data.answer, roomId: targetRoomId });
+        await broadcastCallEvent(targetRoomId, "call_answer", { answer: data.answer, roomId: targetRoomId });
       });
 
-      socket.on("call_candidate", (data = {}) => {
+      socket.on("call_candidate", async (data = {}) => {
         const targetRoomId = data.roomId || socket.roomId;
         if (!targetRoomId || !data.candidate) {
           console.error("call_candidate: missing roomId or candidate", { socketRoomId: socket.roomId, data });
           return;
         }
-        socket.to(targetRoomId).emit("call_candidate", { candidate: data.candidate, roomId: targetRoomId });
+        await broadcastCallEvent(targetRoomId, "call_candidate", { candidate: data.candidate, roomId: targetRoomId });
       });
 
-      socket.on("call_decline", (data = {}) => {
+      socket.on("call_decline", async (data = {}) => {
         const targetRoomId = data.roomId || socket.roomId;
         if (!targetRoomId) {
           console.error("call_decline: missing roomId", { socketRoomId: socket.roomId, data });
           return;
         }
-        socket.to(targetRoomId).emit("call_decline", { ...data, roomId: targetRoomId });
+        await broadcastCallEvent(targetRoomId, "call_decline", { ...data, roomId: targetRoomId });
       });
 
-      socket.on("call_end", (data = {}) => {
+      socket.on("call_end", async (data = {}) => {
         const targetRoomId = data.roomId || socket.roomId;
         if (!targetRoomId) {
           console.error("call_end: missing roomId", { socketRoomId: socket.roomId, data });
           return;
         }
-        socket.to(targetRoomId).emit("call_end", { ...data, roomId: targetRoomId });
+        await broadcastCallEvent(targetRoomId, "call_end", { ...data, roomId: targetRoomId });
       });
 
       socket.on("save_call_message", async (data = {}) => {
@@ -240,7 +255,7 @@ export class Chat {
         socket.to(socket.roomId).emit("user_disconnected", `${socket.user.name} left the room`);
         socket.leave(socket.roomId);
         if (socket.roomId) {
-          socket.to(socket.roomId).emit("call_end", { roomId: socket.roomId });
+          broadcastCallEvent(socket.roomId, "call_end", { roomId: socket.roomId });
         }
       });
     });
