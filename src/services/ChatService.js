@@ -4,6 +4,14 @@ import MinioService from "./MinioService.js";
 import path from "path";
 import { randomUUID } from "crypto";
 
+const getClearedAtForUser = (thread, userId) => {
+  if (!thread?.clearedFor?.length) return null;
+  const entry = thread.clearedFor.find(
+    (item) => item.user?.toString() === userId.toString()
+  );
+  return entry?.clearedAt || null;
+};
+
 class ChatService {
   async assertThreadAccessByRoom(roomId, userId) {
     const thread = await ChatThread.findOne({ roomId, participants: userId });
@@ -177,11 +185,19 @@ class ChatService {
   }
 
   async getRoomMessages(roomId, userId, { limit = 50, before } = {}) {
-    await this.assertThreadAccessByRoom(roomId, userId);
+    const thread = await this.assertThreadAccessByRoom(roomId, userId);
 
     const query = { roomId };
+    const createdAtFilter = {};
     if (before) {
-      query.createdAt = { $lt: new Date(before) };
+      createdAtFilter.$lt = new Date(before);
+    }
+    const clearedAt = getClearedAtForUser(thread, userId);
+    if (clearedAt) {
+      createdAtFilter.$gt = clearedAt;
+    }
+    if (Object.keys(createdAtFilter).length) {
+      query.createdAt = createdAtFilter;
     }
 
     return Message.find(query)
@@ -200,11 +216,18 @@ class ChatService {
     if (!thread) {
       throw new Error("Conversation introuvable");
     }
+    const now = new Date();
     const alreadyHidden = thread.hiddenFor?.some((id) => id.toString() === userId.toString());
     if (!alreadyHidden) {
       thread.hiddenFor = [...(thread.hiddenFor || []), userId];
-      await thread.save();
     }
+    const clearedIndex = thread.clearedFor.findIndex((entry) => entry.user.toString() === userId.toString());
+    if (clearedIndex >= 0) {
+      thread.clearedFor[clearedIndex].clearedAt = now;
+    } else {
+      thread.clearedFor.push({ user: userId, clearedAt: now });
+    }
+    await thread.save();
     return { success: true };
   }
 }
