@@ -85,6 +85,23 @@ class PropertyController{
 
             await createPropertySchema.validateAsync(payload);
 
+            
+            if (payload.status && ['published', 'rejected'].includes(payload.status)) {
+                if (req.user.role !== 'admin') {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Vous ne pouvez pas créer une annonce avec ce statut. Utilisez "brouillon" ou "en attente de modération".',
+                    });
+                }
+            }
+
+            
+            if (!payload.status) {
+                payload.status = 'pending_moderation';
+            } else if (!['draft', 'pending_moderation'].includes(payload.status) && req.user.role !== 'admin') {
+                payload.status = 'pending_moderation';
+            }
+
             const newProperty = await Property.create(payload);
             const hydratedProperty = await recalculatePropertyPriority(newProperty._id);
             res.status(201).json({
@@ -115,8 +132,22 @@ class PropertyController{
             delete updatePayload.ownerId;
             delete updatePayload.owner;
 
+          
+            if (updatePayload.status !== undefined) {
+                if (['published', 'rejected'].includes(updatePayload.status) && req.user.role !== 'admin') {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Vous ne pouvez pas modifier le statut vers "publié" ou "rejeté". Seuls les administrateurs peuvent effectuer cette action.',
+                    });
+                }
+               
+                if (!['draft', 'pending_moderation', 'archived'].includes(updatePayload.status) && req.user.role !== 'admin') {
+                    updatePayload.status = 'pending_moderation';
+                }
+            }
+
             Object.keys(updatePayload).forEach((key) => {
-                if (!OWNER_UPDATABLE_FIELDS.has(key)) {
+                if (!OWNER_UPDATABLE_FIELDS.has(key) && key !== 'status') {
                     delete updatePayload[key];
                 }
             });

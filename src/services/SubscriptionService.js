@@ -5,6 +5,14 @@ import Stripe from 'stripe';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 class SubscriptionService {
+    async _updateUserSubscription(userId, { plan, isActive, endDate }) {
+        const update = {};
+        if (plan !== undefined) update['subscription.plan'] = plan;
+        if (isActive !== undefined) update['subscription.isActive'] = isActive;
+        update['subscription.endDate'] = endDate ?? null;
+        await User.findByIdAndUpdate(userId, { $set: update });
+    }
+
     async createSubscription(userId, planId) {
         const plan = await Plan.findById(planId);
         if (!plan) throw new Error('Plan non trouvé');
@@ -12,11 +20,19 @@ class SubscriptionService {
         const endDate = new Date();
         endDate.setMonth(endDate.getMonth() + 1);
 
-        return await Subscription.create({
+        const subscription = await Subscription.create({
             user: userId,
             plan: planId,
             endDate
         });
+
+        await this._updateUserSubscription(userId, {
+            plan: plan.name,
+            isActive: true,
+            endDate
+        });
+
+        return subscription;
     }
 
     async getUserSubscription(userId) {
@@ -24,10 +40,18 @@ class SubscriptionService {
     }
 
     async cancelSubscription(userId) {
-        return await Subscription.findOneAndUpdate(
+        const result = await Subscription.findOneAndUpdate(
             { user: userId, status: 'active' },
             { status: 'cancelled' }
         );
+        if (result) {
+            await this._updateUserSubscription(userId, {
+                plan: 'gratuit',
+                isActive: false,
+                endDate: null
+            });
+        }
+        return result;
     }
 
     async changePlan(userId, newPlanId) {
@@ -86,6 +110,11 @@ class SubscriptionService {
             } else {
                 sub.status = 'expired';
                 await sub.save();
+                await this._updateUserSubscription(sub.user, {
+                    plan: 'gratuit',
+                    isActive: false,
+                    endDate: null
+                });
             }
         }
         return { processed: expiring.length };
