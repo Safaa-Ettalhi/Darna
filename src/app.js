@@ -10,6 +10,7 @@ import session from 'express-session';
 import dbConfig from './config/db.js';
 import authRoutes from './routes/authRoute.js';
 import subscriptionRoutes from './routes/subscriptionRoute.js';
+import profileRoutes from './routes/profileRoute.js';
 import propertyRoutes from './routes/propertyRoute.js';
 import leadRoutes from './routes/leadRoute.js';
 import adminRoutes from './routes/adminRoute.js';
@@ -76,6 +77,7 @@ class App {
 
         this.app.use('/api/auth', authRoutes);
         this.app.use('/api/subscriptions', subscriptionRoutes);
+        this.app.use('/api/profile', profileRoutes);
         this.app.use('/api/properties', propertyRoutes);
         this.app.use('/api/leads', leadRoutes);
         this.app.use('/api/admin', adminRoutes);

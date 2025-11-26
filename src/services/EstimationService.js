@@ -74,14 +74,14 @@ class EstimationService {
     if (process.env.OPENAI_API_KEY) {
       try {
         const prompt = `
-Tu es un expert immobilier. Estime le prix ${input.transactionType === 'sale' ? 'de vente' : 'de location'} d'un bien en France avec les caractéristiques suivantes:
+Tu es un expert immobilier. Estime le prix ${input.transactionType === 'sale' ? 'de vente' : 'de location'} d'un bien en Maroc avec les caractéristiques suivantes:
 - Surface: ${input.surface} m²
 - Pièces: ${input.rooms}
 - Salles de bain: ${input.bathrooms}
 - Équipements: ${(input.amenities || []).join(', ') || 'aucun équipement particulier'}
 - État: ${input.condition}
 
-Donne une fourchette basse et haute ainsi qu'un prix recommandé en euros.`;
+Donne une fourchette basse et haute ainsi qu'un prix recommandé en dirhams.`;
 
         const response = await axios.post(
           'https://api.openai.com/v1/chat/completions',

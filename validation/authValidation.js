@@ -15,7 +15,7 @@ export const registerSchema = Joi.object({
             street: Joi.string().max(200).optional(),
             city: Joi.string().max(100).optional(),
             postalCode: Joi.string().pattern(/^\d{5}$/).optional(),
-            country: Joi.string().max(50).default('France')
+            country: Joi.string().max(50).default('Maroc')
         }).optional()
     }).optional()
 });
