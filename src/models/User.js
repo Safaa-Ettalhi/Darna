@@ -23,7 +23,10 @@ const userSchema = new mongoose.Schema({
             postalCode: String,
             country: { type: String, default: 'Maroc' }
         },
-        kycVerified: { type: Boolean, default: false }
+        kycVerified: { type: Boolean, default: false },
+        kycNote: String,
+        kycReviewedAt: Date,
+        kycReviewer: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
     },
     emailVerified: { type: Boolean, default: false },
     emailVerificationToken: String,

@@ -101,6 +101,123 @@ class AdminController {
             res.status(500).json({ success: false, message: error.message });
         }
     }
+
+    async listKycRequests(req, res) {
+        try {
+            const { status = 'pending', search = '' } = req.query;
+            const filter = { accountType: 'entreprise' };
+
+            if (status === 'pending') {
+                filter['companyInfo.kycVerified'] = { $ne: true };
+            } else if (status === 'approved') {
+                filter['companyInfo.kycVerified'] = true;
+            }
+
+            if (search) {
+                filter.$or = [
+                    { firstName: { $regex: search, $options: 'i' } },
+                    { lastName: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } },
+                    { 'companyInfo.companyName': { $regex: search, $options: 'i' } },
+                ];
+            }
+
+            const requests = await User.find(filter)
+                .select('firstName lastName email companyInfo createdAt accountType');
+
+            res.json({
+                success: true,
+                requests: requests.map((user) => ({
+                    id: user._id,
+                    firstName: user.firstName,
+                    lastName: user.lastName,
+                    email: user.email,
+                    company: user.companyInfo?.companyName,
+                    siret: user.companyInfo?.siret,
+                    kycVerified: user.companyInfo?.kycVerified ?? false,
+                    kycNote: user.companyInfo?.kycNote ?? '',
+                    createdAt: user.createdAt,
+                    kycReviewedAt: user.companyInfo?.kycReviewedAt,
+                })),
+            });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async updateKycStatus(req, res) {
+        try {
+            const { status, note } = req.body;
+            const allowed = ['approved', 'rejected', 'pending'];
+
+            if (!allowed.includes(status)) {
+                return res.status(400).json({ success: false, message: 'Statut KYC invalide' });
+            }
+
+            const user = await User.findById(req.params.userId);
+            if (!user) {
+                return res.status(404).json({ success: false, message: 'Utilisateur introuvable' });
+            }
+
+            user.companyInfo = {
+                ...user.companyInfo,
+                kycVerified: status === 'approved',
+                kycNote: note || '',
+                kycReviewedAt: new Date(),
+                kycReviewer: req.user.userId,
+            };
+            await user.save();
+
+            const notificationService = new NotificationService(req.app.get('io'));
+            await notificationService.sendNotification({
+                userId: user._id,
+                title: 'Mise à jour KYC',
+                message:
+                    status === 'approved'
+                        ? 'Votre dossier KYC a été approuvé.'
+                        : status === 'rejected'
+                        ? `Votre dossier KYC nécessite des corrections.${note ? ` Motif: ${note}` : ''}`
+                        : 'Votre dossier KYC a été remis en attente.',
+                type: 'ad_validation',
+                email: user.email,
+            });
+
+            res.json({ success: true, user });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async updatePlan(req, res) {
+        try {
+            const { planId } = req.params;
+            const { price, maxProperties, priority, features, duration } = req.body;
+
+            const plan = await Plan.findById(planId);
+            if (!plan) {
+                return res.status(404).json({ success: false, message: 'Plan introuvable' });
+            }
+
+            if (price != null) plan.price = Number(price);
+            if (maxProperties != null) plan.maxProperties = Number(maxProperties);
+            if (priority != null) plan.priority = Number(priority);
+            if (duration != null) plan.duration = duration;
+            if (features !== undefined) {
+                plan.features = Array.isArray(features)
+                    ? features
+                    : String(features)
+                          .split(',')
+                          .map((item) => item.trim())
+                          .filter(Boolean);
+            }
+
+            await plan.save();
+
+            res.json({ success: true, plan });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
 }
 
 export default new AdminController();
