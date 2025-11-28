@@ -183,6 +183,11 @@ class AdminController {
                 email: user.email,
             });
 
+            const io = req.app.get('io');
+            if (io && user) {
+                io.to(user._id.toString()).emit('user_updated', user.toObject());
+            }
+
             res.json({ success: true, user });
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
@@ -276,6 +281,11 @@ class AdminController {
 
             if (!user) {
                 return res.status(404).json({ success: false, message: 'Utilisateur introuvable' });
+            }
+
+            const io = req.app.get('io');
+            if (io) {
+                io.to(user._id.toString()).emit('user_updated', user.toObject());
             }
 
             res.json({ success: true, user });

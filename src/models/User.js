@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema({
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
     phone: { type: String, trim: true },
-    accountType: { type: String, enum: ['particulier', 'entreprise'], default: 'particulier' },
+    accountType: { type: String, enum: ['particulier', 'entreprise', 'admin'], default: 'particulier' },
     role: { type: String, enum: ['visitor', 'particulier', 'entreprise', 'admin'], default: 'particulier' },
     subscription: {
         plan: { type: String, enum: ['gratuit', 'pro', 'premium'], default: 'gratuit' },
