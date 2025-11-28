@@ -22,6 +22,7 @@ import PropertyMediaService from "../services/PropertyMediaService.js";
 import User from "../models/User.js";
 import Subscription from "../models/Subscription.js";
 import Plan from "../models/Plan.js";
+import NotificationService from "../services/NotificationService.js";
 
 const propertyMediaService = new PropertyMediaService();
 const PLAN_PROPERTY_LIMITS = {
@@ -104,6 +105,31 @@ class PropertyController{
 
             const newProperty = await Property.create(payload);
             const hydratedProperty = await recalculatePropertyPriority(newProperty._id);
+            
+            // Notifier les admins si la propriété est en attente de modération
+            if (newProperty.status === 'pending_moderation') {
+                try {
+                    console.log('PropertyController: Notifying admins about new property pending moderation');
+                    const admins = await User.find({ role: 'admin' }).select('_id email');
+                    console.log(`PropertyController: Found ${admins.length} admins`);
+                    if (admins.length > 0) {
+                        const notificationService = new NotificationService(req.app.get('io'));
+                        const owner = await User.findById(req.user.userId).select('firstName lastName email');
+                        const ownerName = owner ? `${owner.firstName} ${owner.lastName}` : 'Un utilisateur';
+                        
+                        const result = await notificationService.sendBulk({
+                            recipients: admins.map((admin) => ({ userId: admin._id, email: admin.email })),
+                            title: 'Nouvelle annonce en attente de modération',
+                            message: `${ownerName} a créé une nouvelle annonce : "${newProperty.title}"`,
+                            type: 'admin_alert',
+                        });
+                        console.log(`PropertyController: Successfully sent ${result.length} notifications to admins`);
+                    }
+                } catch (notifError) {
+                    console.error('Error notifying admins about new property:', notifError);
+                }
+            }
+            
             res.status(201).json({
                 success: true,
                 property: hydratedProperty || newProperty,
