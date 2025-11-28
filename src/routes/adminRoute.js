@@ -12,6 +12,9 @@ router.get('/leads', adminGuard, AdminController.listLeads);
 router.get('/kyc/requests', adminGuard, AdminController.listKycRequests);
 router.patch('/kyc/:userId/status', adminGuard, AdminController.updateKycStatus);
 router.patch('/plans/:planId', adminGuard, AdminController.updatePlan);
+router.get('/users', adminGuard, AdminController.listUsers);
+router.patch('/users/:userId', adminGuard, AdminController.updateUser);
+router.get('/system/settings', adminGuard, AdminController.getSystemSettings);
 
 export default router;
 

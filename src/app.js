@@ -17,6 +17,7 @@ import adminRoutes from './routes/adminRoute.js';
 import financingRoutes from './routes/financingRoute.js';
 import estimationRoutes from './routes/estimationRoute.js';
 import chatRoutes from './routes/chatRoute.js';
+import supportRoutes from './routes/supportRoute.js';
 
 dotenv.config();
 
@@ -84,6 +85,7 @@ class App {
         this.app.use('/api/financing', financingRoutes);
         this.app.use('/api/estimation', estimationRoutes);
         this.app.use('/api/chat', chatRoutes);
+        this.app.use('/api/support', supportRoutes);
 
         this.app.get('/abo/success', (req, res) => {
             res.send(`

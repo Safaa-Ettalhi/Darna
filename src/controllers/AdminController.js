@@ -1,3 +1,4 @@
+import os from 'os';
 import Property from '../models/Property.js';
 import User from '../models/User.js';
 import Lead from '../models/Lead.js';
@@ -214,6 +215,102 @@ class AdminController {
             await plan.save();
 
             res.json({ success: true, plan });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async listUsers(req, res) {
+        try {
+            const { role, accountType, status, search } = req.query;
+            const filter = {};
+
+            if (role) filter.role = role;
+            if (accountType) filter.accountType = accountType;
+            if (status === 'active') filter.isActive = true;
+            if (status === 'inactive') filter.isActive = false;
+            if (status === 'blocked') filter.isBlocked = true;
+
+            if (search) {
+                filter.$or = [
+                    { firstName: { $regex: search, $options: 'i' } },
+                    { lastName: { $regex: search, $options: 'i' } },
+                    { email: { $regex: search, $options: 'i' } },
+                    { 'companyInfo.companyName': { $regex: search, $options: 'i' } },
+                ];
+            }
+
+            const users = await User.find(filter)
+                .sort({ createdAt: -1 })
+                .select('firstName lastName email role accountType isActive isBlocked blockedReason subscription.plan companyInfo.companyName createdAt');
+
+            res.json({ success: true, users });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async updateUser(req, res) {
+        try {
+            const { userId } = req.params;
+            const { role, accountType, isActive, isBlocked, blockedReason } = req.body;
+
+            const updates = {};
+            if (role) updates.role = role;
+            if (accountType) updates.accountType = accountType;
+            if (typeof isActive === 'boolean') updates.isActive = isActive;
+            if (typeof isBlocked === 'boolean') {
+                updates.isBlocked = isBlocked;
+                updates.blockedReason = isBlocked ? blockedReason || 'Blocage administrateur' : null;
+            } else if (blockedReason !== undefined) {
+                updates.blockedReason = blockedReason;
+            }
+
+            if (!Object.keys(updates).length) {
+                return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour' });
+            }
+
+            const user = await User.findByIdAndUpdate(userId, updates, { new: true }).select(
+                'firstName lastName email role accountType isActive isBlocked blockedReason'
+            );
+
+            if (!user) {
+                return res.status(404).json({ success: false, message: 'Utilisateur introuvable' });
+            }
+
+            res.json({ success: true, user });
+        } catch (error) {
+            res.status(500).json({ success: false, message: error.message });
+        }
+    }
+
+    async getSystemSettings(req, res) {
+        try {
+            const memory = process.memoryUsage();
+            const uptimeSeconds = Math.round(process.uptime());
+
+            res.json({
+                success: true,
+                settings: {
+                    environment: process.env.NODE_ENV || 'development',
+                    version: process.env.APP_VERSION || '1.0.0',
+                    nodeVersion: process.version,
+                    hostname: os.hostname(),
+                    uptimeSeconds,
+                    resources: {
+                        memoryMB: Math.round(memory.rss / 1024 / 1024),
+                        heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+                        platform: process.platform,
+                    },
+                    services: {
+                        database: true,
+                        stripe: Boolean(process.env.STRIPE_SECRET_KEY || process.env.STRIPE_SECRET),
+                        minio: Boolean(process.env.MINIO_ENDPOINT),
+                        websockets: true,
+                        tirelireBridge: Boolean(process.env.TIRELIRE_API_URL),
+                    },
+                },
+            });
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
         }
