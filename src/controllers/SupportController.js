@@ -2,21 +2,22 @@ import SupportTicket from '../models/SupportTicket.js';
 import User from '../models/User.js';
 import NotificationService from '../services/NotificationService.js';
 
-class SupportController {
-    async notifyAdmins(req, payload) {
-        try {
-            const admins = await User.find({ role: 'admin' }).select('_id email');
-            if (!admins.length) return;
-            const service = new NotificationService(req.app.get('io'));
-            await service.sendBulk({
-                recipients: admins.map((admin) => ({ userId: admin._id, email: admin.email })),
-                ...payload,
-            });
-        } catch (error) {
-            console.error('Support notification error:', error);
-        }
+// Helper function pour notifier les admins
+async function notifyAdmins(req, payload) {
+    try {
+        const admins = await User.find({ role: 'admin' }).select('_id email');
+        if (!admins.length) return;
+        const service = new NotificationService(req.app.get('io'));
+        await service.sendBulk({
+            recipients: admins.map((admin) => ({ userId: admin._id, email: admin.email })),
+            ...payload,
+        });
+    } catch (error) {
+        console.error('Support notification error:', error);
     }
+}
 
+class SupportController {
     async createTicket(req, res) {
         try {
             const { subject, category = 'other', message, priority = 'normal', email } = req.body;
@@ -36,7 +37,7 @@ class SupportController {
                 priority,
             });
 
-            await this.notifyAdmins(req, {
+            await notifyAdmins(req, {
                 title: 'Nouveau ticket support',
                 message: `${requester ? `${requester.firstName} ${requester.lastName}` : 'Un visiteur'} a soumis un ticket : "${subject}"`,
                 type: 'admin_alert',
@@ -112,7 +113,8 @@ class SupportController {
             await ticket.save();
             const populated = await ticket
                 .populate('user', 'firstName lastName email')
-                .populate('assignedTo', 'firstName lastName email');
+                .populate('assignedTo', 'firstName lastName email')
+                .populate('responses.author', 'firstName lastName email');
 
             if (responseMessage && ticket.email) {
                 const service = new NotificationService(req.app.get('io'));
