@@ -24,23 +24,25 @@ export class NotificationSocket {
         const user = await User.findById(userId);
         if (user && user.role === 'admin') {
           socket.join('admin');
-          console.log(`Admin ${userId} (${user.email}) joined admin room for notifications`);
+          const adminRoomSize = this.#io.sockets.adapter.rooms.get('admin')?.size || 0;
+          console.log(`✅ Admin ${userId} (${user.email}) joined admin room for notifications`);
+          console.log(`📊 Admin room now has ${adminRoomSize} connected admin(s)`);
           
-          // Récupérer immédiatement les notifications non lues pour l'admin
+        
           const unreadNotifications = await Notification.find({ 
             userId: userId, 
             isRead: false 
           }).sort({ createdAt: -1 }).limit(10);
           
           if (unreadNotifications.length > 0) {
-            console.log(`📬 Found ${unreadNotifications.length} unread notifications for admin ${userId}`);
+            console.log(` Found ${unreadNotifications.length} unread notifications for admin ${userId}`);
             socket.emit('notifications_list', unreadNotifications);
           }
         } else {
-          console.log(`User ${userId} is not an admin (role: ${user?.role || 'unknown'})`);
+          console.log(`ℹUser ${userId} is not an admin (role: ${user?.role || 'unknown'})`);
         }
       } catch (error) {
-        console.error('Error checking admin role:', error);
+        console.error(' Error checking admin role:', error);
       }
 
       console.log(`User ${userId} connected to notifications`);

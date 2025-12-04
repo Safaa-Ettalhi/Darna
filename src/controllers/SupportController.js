@@ -52,18 +52,20 @@ class SupportController {
          
             const io = req.app.get('io');
             if (io) {
-                let ticketData;
-                if (populated.toObject) {
-                    ticketData = populated.toObject({ virtuals: true });
-                } else if (populated.toJSON) {
-                    ticketData = populated.toJSON();
-                } else {
-                    ticketData = JSON.parse(JSON.stringify(populated));
-                }
-                console.log('Emitting ticket_created to admin room:', ticketData._id || ticketData.id);
+               
+                const ticketData = populated.toObject ? populated.toObject({ virtuals: true }) : JSON.parse(JSON.stringify(populated));
+                
+                console.log('SupportController: Emitting ticket_created to admin room');
+                console.log('SupportController: Ticket ID:', ticketData._id || ticketData.id);
+                console.log('SupportController: Admin room clients:', io.sockets.adapter.rooms.get('admin')?.size || 0);
+                
                 io.to('admin').emit('ticket_created', {
                     ticket: ticketData,
                 });
+                
+                console.log('SupportController: ticket_created event emitted successfully');
+            } else {
+                console.warn('SupportController: Socket.IO instance not available');
             }
             
             res.json({ success: true, ticket: populated });
@@ -118,57 +120,90 @@ class SupportController {
             const { ticketId } = req.params;
             const { status, priority, assignedTo, responseMessage } = req.body;
 
+            console.log('SupportController.updateTicket: Starting update for ticket', ticketId);
+            console.log('SupportController.updateTicket: Payload', { status, priority, assignedTo, hasResponseMessage: !!responseMessage });
+
             const ticket = await SupportTicket.findById(ticketId);
             if (!ticket) {
+                console.log('SupportController.updateTicket: Ticket not found', ticketId);
                 return res.status(404).json({ success: false, message: 'Ticket introuvable' });
             }
 
-            if (status) ticket.status = status;
-            if (priority) ticket.priority = priority;
-            if (assignedTo !== undefined) ticket.assignedTo = assignedTo || null;
+           
+            if (status) {
+                ticket.status = status;
+                console.log('SupportController.updateTicket: Status updated to', status);
+            }
+            if (priority) {
+                ticket.priority = priority;
+                console.log('SupportController.updateTicket: Priority updated to', priority);
+            }
+            if (assignedTo !== undefined) {
+                ticket.assignedTo = assignedTo || null;
+                console.log('SupportController.updateTicket: AssignedTo updated to', assignedTo);
+            }
             if (responseMessage) {
+                if (!req.user || !req.user.userId) {
+                    console.error('SupportController.updateTicket: req.user.userId is missing');
+                    return res.status(401).json({ success: false, message: 'Utilisateur non authentifié' });
+                }
                 ticket.responses.push({
                     author: req.user.userId,
                     message: responseMessage,
                 });
+                console.log('SupportController.updateTicket: Response added');
             }
 
             await ticket.save();
-            const populated = await ticket
+            console.log('SupportController.updateTicket: Ticket saved');
+
+           
+            const populated = await SupportTicket.findById(ticketId)
                 .populate('user', 'firstName lastName email')
                 .populate('assignedTo', 'firstName lastName email')
-                .populate('responses.author', 'firstName lastName email');
+                .populate('responses.author', 'firstName lastName email')
+                .lean(); 
 
-            if (responseMessage && ticket.email) {
-                const service = new NotificationService(req.app.get('io'));
-                await service.sendNotification({
-                    userId: ticket.user,
-                    email: ticket.email,
-                    title: 'Mise à jour de votre ticket',
-                    message: `Une réponse a été ajoutée à votre ticket "${ticket.subject}".`,
-                    type: 'info',
-                });
+            if (!populated) {
+                console.error('SupportController.updateTicket: Failed to populate ticket');
+                return res.status(500).json({ success: false, message: 'Erreur lors de la récupération du ticket' });
             }
 
-            // Émettre un événement Socket.IO pour tous les admins
+            if (responseMessage && ticket.email) {
+                try {
+                    const service = new NotificationService(req.app.get('io'));
+                    await service.sendNotification({
+                        userId: ticket.user,
+                        email: ticket.email,
+                        title: 'Mise à jour de votre ticket',
+                        message: `Une réponse a été ajoutée à votre ticket "${ticket.subject}".`,
+                        type: 'info',
+                    });
+                    console.log('SupportController.updateTicket: Notification sent to user');
+                } catch (notifError) {
+                    console.error('SupportController.updateTicket: Error sending notification', notifError);
+                   
+                }
+            }
+
             const io = req.app.get('io');
             if (io) {
-                let ticketData;
-                if (populated.toObject) {
-                    ticketData = populated.toObject({ virtuals: true });
-                } else if (populated.toJSON) {
-                    ticketData = populated.toJSON();
-                } else {
-                    ticketData = JSON.parse(JSON.stringify(populated));
-                }
-                console.log('Emitting ticket_updated to admin room:', ticketData._id || ticketData.id);
+                console.log('SupportController: Emitting ticket_updated to admin room');
+                console.log('SupportController: Ticket ID:', populated._id || populated.id);
+                console.log('SupportController: Admin room clients:', io.sockets.adapter.rooms.get('admin')?.size || 0);
+                
                 io.to('admin').emit('ticket_updated', {
-                    ticket: ticketData,
+                    ticket: populated,
                 });
+                
+                console.log('SupportController: ticket_updated event emitted successfully');
+            } else {
+                console.warn('SupportController: Socket.IO instance not available');
             }
 
             res.json({ success: true, ticket: populated });
         } catch (error) {
+            console.error('SupportController.updateTicket: Error', error);
             res.status(500).json({ success: false, message: error.message });
         }
     }
