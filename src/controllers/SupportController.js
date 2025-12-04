@@ -49,6 +49,23 @@ class SupportController {
             });
 
             const populated = await ticket.populate('user', 'firstName lastName email');
+         
+            const io = req.app.get('io');
+            if (io) {
+                let ticketData;
+                if (populated.toObject) {
+                    ticketData = populated.toObject({ virtuals: true });
+                } else if (populated.toJSON) {
+                    ticketData = populated.toJSON();
+                } else {
+                    ticketData = JSON.parse(JSON.stringify(populated));
+                }
+                console.log('Emitting ticket_created to admin room:', ticketData._id || ticketData.id);
+                io.to('admin').emit('ticket_created', {
+                    ticket: ticketData,
+                });
+            }
+            
             res.json({ success: true, ticket: populated });
         } catch (error) {
             res.status(500).json({ success: false, message: error.message });
@@ -87,6 +104,7 @@ class SupportController {
                 .sort({ createdAt: -1 })
                 .populate('user', 'firstName lastName email')
                 .populate('assignedTo', 'firstName lastName email')
+                .populate('responses.author', 'firstName lastName email')
                 .lean();
 
             res.json({ success: true, tickets });
@@ -118,7 +136,8 @@ class SupportController {
             await ticket.save();
             const populated = await ticket
                 .populate('user', 'firstName lastName email')
-                .populate('assignedTo', 'firstName lastName email');
+                .populate('assignedTo', 'firstName lastName email')
+                .populate('responses.author', 'firstName lastName email');
 
             if (responseMessage && ticket.email) {
                 const service = new NotificationService(req.app.get('io'));
@@ -128,6 +147,23 @@ class SupportController {
                     title: 'Mise à jour de votre ticket',
                     message: `Une réponse a été ajoutée à votre ticket "${ticket.subject}".`,
                     type: 'info',
+                });
+            }
+
+            // Émettre un événement Socket.IO pour tous les admins
+            const io = req.app.get('io');
+            if (io) {
+                let ticketData;
+                if (populated.toObject) {
+                    ticketData = populated.toObject({ virtuals: true });
+                } else if (populated.toJSON) {
+                    ticketData = populated.toJSON();
+                } else {
+                    ticketData = JSON.parse(JSON.stringify(populated));
+                }
+                console.log('Emitting ticket_updated to admin room:', ticketData._id || ticketData.id);
+                io.to('admin').emit('ticket_updated', {
+                    ticket: ticketData,
                 });
             }
 
