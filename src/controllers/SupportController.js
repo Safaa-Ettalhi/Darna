@@ -79,6 +79,7 @@ class SupportController {
             const tickets = await SupportTicket.find({ user: req.user.userId })
                 .sort({ createdAt: -1 })
                 .populate('assignedTo', 'firstName lastName email')
+                .populate('responses.author', 'firstName lastName email')
                 .lean();
 
             res.json({ success: true, tickets });
